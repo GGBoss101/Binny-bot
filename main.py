@@ -2,7 +2,7 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from better_profanity import profanity
+from profanity_check import predict, predict_prob # Import the ML text classifier
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -17,11 +17,9 @@ class PickUpBot(commands.Bot):
 
 bot = PickUpBot()
 
-profanity.load_censor_words()
-
 @bot.event
 async def on_ready():
-    print(f'{bot.user.name} is online and eating up trash!')
+    print(f'{bot.user.name} is online and running machine-learning scans for bad language!')
     await bot.change_presence(activity=discord.Game(name="Spitting excess garbage at volunteers!"))
 
 @bot.event
@@ -60,16 +58,26 @@ async def on_message(message: discord.Message):
     if message.author == bot.user:
         return
 
-    if profanity.contains_profanity(message.content):
-        try:
-            await message.delete()
-            await message.channel.send(
-                f"⚠️ {message.author.mention}, keep it clean! Garbo only eats real trash, not trashy language! 🚮",
-                delete_after=10
-            )
-        except discord.Forbidden:
-            print("Error: The bot lacks 'Manage Messages' permissions to remove text.")
-        return
+    is_exec_channel = False
+    if isinstance(message.channel, discord.TextChannel) and message.channel.category:
+        if message.channel.category.name.lower() == "exec only":
+            is_exec_channel = True
+
+    if not is_exec_channel:
+        # predict() returns [1] if text is profane/toxic, or [0] if it is clean
+        # The ML automatically bypasses slang like lmao, omfg, god, etc.
+        is_profane = predict([message.content])[0]
+        
+        if is_profane == 1:
+            try:
+                await message.delete()
+                await message.channel.send(
+                    f"⚠️ {message.author.mention}, keep it clean! Garbo only eats real trash, not trashy language! 🚮",
+                    delete_after=10
+                )
+            except discord.Forbidden:
+                print("Error: The bot lacks 'Manage Messages' permissions to remove text.")
+            return
 
     content_lower = message.content.lower()
 
